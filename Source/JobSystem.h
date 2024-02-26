@@ -65,14 +65,23 @@ public:
     ~JobSystem() { stopSystem(); }
     
     /**
+     This will flush out all jobs and callbacks in the pipe.
+     */
+    void flush()
+    {
+        abort.store(true);
+        threadPool.removeAllJobs(true, 1000);
+        finishedJobs.clear();
+        abort.store(false);
+    }
+    /**
      This will terminate the thread, and flush out all jobs in the pipe. The callback timer will stop and terminated jobs won't finish.
      */
     void stopSystem()
     {
         stopThread(1000);
-        threadPool.removeAllJobs(true, 1000);
         stopTimer();
-        finishedJobs.clear();
+        flush();
         abort.store(true);
     }
     
