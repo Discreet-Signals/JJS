@@ -90,12 +90,69 @@ public:
     void pushJob(std::unique_ptr<Job> job, ScopedFunctionContainer<void()>* callbacks = nullptr, ScopedFunctionContainer<void(float)>* progressCallbacks = nullptr)
     {
         job->linkSystem([&](){ return abort.load(); }, callbacks, progressCallbacks, [&](std::function<void()>&& progressCallback)
-                        {
+        {
             juce::ScopedLock lock(criticalSection);
             progressCallbackFIFO.push(std::move(progressCallback));
         });
         job->jobSetup();
         inputJobs.push(std::move(job));
+    }
+    
+    void pushJob(std::unique_ptr<Job> job, const juce::Identifier& callback_id, const juce::Identifier& progress_callback_id = juce::Identifier())
+    {
+        JJS::ScopedFunctionContainer<void()>* callbacks = nullptr;
+        JJS::ScopedFunctionContainer<void(float)>* progressCallbacks = nullptr;
+
+        auto cit = callbackMap.find(callback_id);
+        if (cit != callbackMap.end() && cit->second)
+            callbacks = cit->second.get();
+
+        if (progress_callback_id.isValid())
+        {
+            auto pit = progressCallbackMap.find(progress_callback_id);
+            if (pit != progressCallbackMap.end() && pit->second)
+            {
+                progressCallbacks = pit->second.get();
+            }
+        }
+
+        pushJob(std::move(job), callbacks, progressCallbacks);
+    }
+    
+    void addCallback(const juce::Identifier& callback_id, FunctionScope<void()>* scope, std::function<void()>&& function)
+    {
+        if (callbackMap.find(callback_id) == callbackMap.end())
+            callbackMap.emplace(callback_id, std::make_unique<JJS::ScopedFunctionContainer<void()>>());
+        callbackMap[callback_id]->add(scope, std::move(function));
+    }
+    
+    void addProgressCallback(const juce::Identifier& callback_id, FunctionScope<void(float)>* scope, std::function<void(float)>&& function)
+    {
+        if (progressCallbackMap.find(callback_id) == progressCallbackMap.end())
+            progressCallbackMap.emplace(callback_id, std::make_unique<JJS::ScopedFunctionContainer<void(float)>>());
+        progressCallbackMap[callback_id]->add(scope, std::move(function));
+    }
+    
+    void triggerCallbacks(ScopedFunctionContainer<void()>* callbacks)
+    {
+        if (!callbacks)
+            return;
+        if (juce::MessageManager::getInstance()->isThisTheMessageThread())
+            callbacks->triggerFunctions();
+        else
+            finishedJobs.push(std::make_shared<Job>([](){}, [callbacks]()
+            {
+                callbacks->triggerFunctions();
+            }));
+    }
+    
+    void triggerCallbacks(const juce::Identifier& callback_id)
+    {
+        JJS::ScopedFunctionContainer<void()>* callbacks = nullptr;
+        auto cit = callbackMap.find(callback_id);
+        if (cit != callbackMap.end() && cit->second)
+            callbacks = cit->second.get();
+        triggerCallbacks(callbacks);
     }
     
 private:
@@ -116,7 +173,7 @@ private:
         // Run Highest Priority Job
         std::unique_ptr<Job> jobToRun = prioritizedJobs.popJob();
         threadPool.addJob([&, job = std::shared_ptr<Job>(jobToRun.release())]() mutable
-                          {
+        {
             job->executeAction();
             if (abort.load())
                 return;
@@ -153,6 +210,9 @@ private:
     juce::CriticalSection criticalSection;
     long queueCounter { 0 };
     std::atomic<bool> abort { false };
+    
+    std::map<juce::Identifier, std::unique_ptr<JJS::ScopedFunctionContainer<void()>>> callbackMap;
+    std::map<juce::Identifier, std::unique_ptr<JJS::ScopedFunctionContainer<void(float)>>> progressCallbackMap;
 };
 
 } // JJS

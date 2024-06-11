@@ -57,6 +57,7 @@ template <typename fn>
 class ScopedFunctionContainer
 {
 public:
+    ScopedFunctionContainer() = default;
     void add(FunctionScope<fn>* scope, std::function<fn>&& function)
     {
         juce::ScopedLock lock(criticalSection);
