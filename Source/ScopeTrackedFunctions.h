@@ -44,7 +44,7 @@ template <typename fn = void()>
 class FunctionScope
 {
 public:
-    FunctionScope() { DBG("Scope Created: " << std::to_string(reinterpret_cast<uintptr_t>(this))); }
+    FunctionScope() { }
     ~FunctionScope();
     
 private:
@@ -67,15 +67,8 @@ public:
     void remove(FunctionScope<fn>* scope)
     {
         juce::ScopedLock lock(criticalSection);
-        auto iterator = std::remove_if(scopes.begin(), scopes.end(), [scope](FunctionScope<fn>* s)
-                                       {
-            bool removed = s == scope;
-            if (removed)
-                DBG("Removed Scope: " << std::to_string(reinterpret_cast<uintptr_t>(scope)));
-            return s == scope;
-        });
+        auto iterator = std::remove_if(scopes.begin(), scopes.end(), [scope](FunctionScope<fn>* s) { return s == scope; });
         scopes.erase(iterator, scopes.end());
-        DBG("Scopes: " << scopes.size());
     }
     template<typename... Args>
     void triggerFunctions(Args... args) const
@@ -118,7 +111,6 @@ FunctionScope<fn>::~FunctionScope()
 {
     for (ScopedFunctionContainer<fn>* container : containers)
         container->remove(this);
-    DBG("Scope Destroyed: " << std::to_string(reinterpret_cast<uintptr_t>(this)));
 };
 
 } // ScopeTrackedFunctions

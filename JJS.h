@@ -18,3 +18,4 @@ END_JUCE_MODULE_DECLARATION
 #include <juce_events/juce_events.h>
 #include <JuceHeader.h>
 #include "Source/JobSystem.h"
+#include "Source/CallbackMap.h"
